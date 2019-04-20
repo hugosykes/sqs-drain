@@ -1,13 +1,30 @@
 const diskWriter = require('./disk-writer')
 
-function drainQueue(outputFile, queueUrl, region, profile) {
+async function drainQueue(outputFile, queueUrl, region, profile) {
   process.env.AWS_SDK_LOAD_CONFIG = true
   process.env.AWS_PROFILE = profile
   const AWS = require('aws-sdk')
   AWS.config.region = region
   const sqs = new AWS.SQS({apiVersion: '2012-11-05'})
+  let messagesAvailable = await checkForExistingMessages(queueUrl, sqs)
+  while (messagesAvailable) {
+    receiveMessages(queueUrl, sqs, outputFile)
+    messagesAvailable = await checkForExistingMessages(queueUrl, sqs)
+  }
+}
 
-  receiveMessages(queueUrl, sqs, outputFile)
+function checkForExistingMessages(queueUrl, sqs) {
+  return new Promise((resolve, reject) => {
+    sqs.getQueueAttributes({
+      QueueUrl: queueUrl,
+      AttributeNames: ["ApproximateNumberOfMessages"]
+    }, (err, data) => {
+      const num = data.Attributes["ApproximateNumberOfMessages"]
+      if (err) reject(err)
+      else if (num > 0) resolve(true)
+      else resolve(false)
+    })
+  })
 }
 
 function receiveMessages(queueUrl, sqs, outputFile) {
@@ -18,11 +35,12 @@ function receiveMessages(queueUrl, sqs, outputFile) {
   sqs.receiveMessage(params, (err, data) => {
     if (err) {
       console.log(err.stack)
-      return err
     } else {
       const {Messages} = data
-      diskWriter.writeToDisk(outputFile, getBody(Messages))
-      deleteMessages(queueUrl, sqs, Messages)
+      if (Messages) {
+        diskWriter.writeToDisk(outputFile, getBody(Messages))
+        deleteMessages(queueUrl, sqs, Messages)
+      }
     }
   })
 }
@@ -39,11 +57,11 @@ function deleteMessages(queueUrl, sqs, messages) {
       if (data.Failed.length !== 0) {
         data.Failed.forEach(m => {
           console.log(`Failed to delete: ${m.Id}, for reason: ${m.Message}`
-          + `, and code ${m.Code}`)
+              + `, and code ${m.Code}`)
         })
       }
       data.Successful.forEach(s => console.log(`Successfully deleted `
-      + `${s.Id}`))
+          + `${s.Id}`))
     }
   })
 }

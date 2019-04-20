@@ -18,7 +18,6 @@ program
       console.log(program.commandHelp())
       process.exit(1)
     }
-
     sqs.drainQueue(output, queueUrl, region, profile)
   })
 
