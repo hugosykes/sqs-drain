@@ -18,11 +18,13 @@ function receiveMessages(queueUrl, sqs, outputFile) {
 
   sqs.receiveMessage(params, (err, data) => {
     if (err) console.log(err.stack)
-    else {
-      console.log(data)
-      data.Messages
-      diskWriter.writeToDisk(outputFile, JSON.stringify(data.Messages))
-    }
+    else diskWriter.writeToDisk(outputFile, stringify(data))
+  })
+}
+
+function stringify(res) {
+  return res.Messages.map(m => {
+    return m.Body
   })
 }
 
